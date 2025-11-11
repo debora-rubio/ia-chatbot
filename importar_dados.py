@@ -11,6 +11,55 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
+def aplicar_replace(dados):
+    """Converte valores categóricos para números usando mapeamento específico."""
+    dados_encoded = dados.copy()
+    
+    # Mapeamento de valores categóricos para números
+    mapeamentos = {
+        # Sim/Não
+        'Sim': 1,
+        'Não': 2,
+        
+        # Finalidade
+        'Industrial': 1,
+        'Comercial': 2,
+        'Doméstico': 3,
+        
+        # Capacidade (Kg por minuto)
+        'Até 1Kg': 1,
+        'Até 6.5Kg': 2,
+        'Até 9Kg': 3,
+        'Acima de 10Kg': 4,
+        
+        # Voltagem
+        '127V': 1,
+        '220V': 2,
+        'Trifásico': 3,
+        
+        # Tipo de material
+        'Embutidos': 1,
+        'Carne, Frango': 2,
+        'Diversos (Castanhas, Frutas, Graõs, Etc)': 3,
+        
+        # Orçamento
+        'Até R$ 2,500,00': 1,
+        'Até R$ 15,000,00': 2,
+        'Acima de R$ 15,000,00': 3,
+        
+        # Potência
+        'Até 0,25kW': 1,
+        'Até 2,2kW': 2,
+        'Até 5,5kW': 3,
+        'Até 7,5kW': 4,
+    }
+    
+    # Aplica o replace em todas as colunas
+    for col in dados_encoded.columns:
+        dados_encoded[col] = dados_encoded[col].replace(mapeamentos)
+    
+    return dados_encoded
+
 def main():
     # 1. Importar dados
     df = pd.read_csv('base-dados-atualizada.csv', encoding='utf-8')
@@ -25,15 +74,18 @@ def main():
     print(f"Classes: {y.nunique()} categorias\n")
     
     # 3. Converter dados categóricos para numéricos
-    X_encoded = X.copy()
-    label_encoders = {}
+    # Primeiro aplica replace nos valores conhecidos
+    X_encoded = aplicar_replace(X)
     
+    # Depois aplica LabelEncoder nos valores que ainda são strings
+    label_encoders = {}
     for col in X_encoded.columns:
         if X_encoded[col].dtype == 'object':
             le = LabelEncoder()
             X_encoded[col] = le.fit_transform(X_encoded[col])
             label_encoders[col] = le
     
+    # Converte Y (produtos) com LabelEncoder
     le_y = LabelEncoder()
     y_encoded = le_y.fit_transform(y)
     
