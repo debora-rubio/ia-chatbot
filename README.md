@@ -28,7 +28,33 @@ ia-chatbot/
 1. Crie um ambiente virtual:
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
+```
+
+Ativação do ambiente virtual (escolha conforme seu sistema):
+
+- Linux / macOS (bash, zsh):
+```bash
+source venv/bin/activate
+```
+
+- Windows (PowerShell):
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+- Windows (Prompt de Comando - cmd.exe):
+```bat
+venv\Scripts\activate.bat
+```
+
+Observação: no Windows o PowerShell pode bloquear a execução de scripts por política de execução. Se ao rodar o comando acima você receber um erro informando que a execução de scripts está desabilitada, execute (no PowerShell) o comando abaixo para permitir scripts assinados para o usuário atual:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+```
+Em seguida, execute novamente:
+```powershell
+.\venv\Scripts\Activate.ps1
 ```
 
 2. Instale as dependências:
