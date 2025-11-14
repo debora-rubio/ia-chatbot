@@ -98,9 +98,107 @@ def carregar_modelo():
     
     return modelo, encoders, y_encoder, feature_names
 
+def extrair_regras_decisao(modelo, dados_encoded, feature_names, respostas_originais):
+    """
+    Extrai as regras da árvore de decisão que levaram à predição
+    
+    Args:
+        modelo: Modelo de árvore de decisão treinado
+        dados_encoded: DataFrame com os dados codificados
+        feature_names: Lista com os nomes das features
+        respostas_originais: Dict com as respostas originais (não codificadas)
+    
+    Returns:
+        list: Lista de regras (dicts com 'pergunta', 'resposta', 'importancia')
+    """
+    regras = []
+    
+    try:
+        # Obter o caminho da decisão na árvore
+        decision_path = modelo.decision_path(dados_encoded)
+        
+        # Obter o nó folha (último nó do caminho)
+        leaf_id = modelo.apply(dados_encoded)[0]
+        
+        # Obter o caminho até a folha
+        node_indicator = decision_path.toarray()[0]
+        path_nodes = [i for i, val in enumerate(node_indicator) if val == 1]
+        
+        # Extrair as features mais importantes do caminho
+        # Vamos pegar os nós internos (não folhas) que foram visitados
+        feature_importances = {}
+        
+        # Calcular a profundidade de cada nó
+        def get_node_depth(node_id, depth=0):
+            """Calcula a profundidade de um nó na árvore"""
+            if node_id == 0:
+                return depth
+            # Encontrar o pai do nó
+            for i in range(len(modelo.tree_.children_left)):
+                if modelo.tree_.children_left[i] == node_id or modelo.tree_.children_right[i] == node_id:
+                    return get_node_depth(i, depth + 1)
+            return depth
+        
+        for node_id in path_nodes:
+            if node_id == leaf_id:
+                continue  # Pular o nó folha
+            
+            # Obter a feature usada neste nó
+            feature_idx = modelo.tree_.feature[node_id]
+            if feature_idx >= 0:  # -2 indica nó folha
+                feature_name = feature_names[feature_idx]
+                
+                # Calcular importância baseada na profundidade (nós mais próximos da raiz são mais importantes)
+                node_depth = get_node_depth(node_id)
+                n_samples = modelo.tree_.n_node_samples[node_id]
+                
+                # Calcular score de importância (menor profundidade = maior importância)
+                importance_score = (100 - node_depth * 10) + (n_samples / 10)
+                
+                if feature_name not in feature_importances or importance_score > feature_importances[feature_name]['score']:
+                    feature_importances[feature_name] = {
+                        'score': importance_score,
+                        'depth': node_depth,
+                        'n_samples': n_samples
+                    }
+        
+        # Ordenar por score de importância (maior score = mais importante)
+        sorted_features = sorted(feature_importances.items(), 
+                                key=lambda x: x[1]['score'], 
+                                reverse=True)
+        
+        # Converter para formato legível
+        for idx, (feature_name, info) in enumerate(sorted_features[:7]):  # Top 7 mais importantes
+            # Encontrar a resposta original correspondente
+            resposta_original = respostas_originais.get(feature_name, '')
+            
+            if resposta_original:
+                # Determinar importância: primeiras 3 são alta, resto média
+                importancia = 'alta' if idx < 3 else 'média'
+                regras.append({
+                    'pergunta': feature_name,
+                    'resposta': resposta_original,
+                    'importancia': importancia
+                })
+    
+    except Exception as e:
+        print(f"⚠️  Erro ao extrair regras: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback: retornar todas as respostas como regras, ordenadas
+        todas_respostas = list(respostas_originais.items())
+        for idx, (pergunta, resposta) in enumerate(todas_respostas[:7]):
+            regras.append({
+                'pergunta': pergunta,
+                'resposta': resposta,
+                'importancia': 'alta' if idx < 3 else 'média'
+            })
+    
+    return regras
+
 def prever_produto(respostas):
     """
-    Faz a predição do produto baseado nas respostas
+    Faz a predição do produto baseado nas respostas e extrai as regras de decisão
     
     Args:
         respostas: dict com as respostas onde as chaves são os textos das perguntas:
@@ -111,7 +209,10 @@ def prever_produto(respostas):
         }
     
     Returns:
-        str: Nome do produto recomendado
+        dict: {
+            'produto': str,  # Nome do produto recomendado
+            'regras': list    # Lista de regras que levaram à decisão
+        }
     """
     modelo, encoders, y_encoder, feature_names = carregar_modelo()
     
@@ -137,7 +238,13 @@ def prever_produto(respostas):
     predicao_encoded = modelo.predict(dados_encoded)
     produto = y_encoder.inverse_transform(predicao_encoded)[0]
     
-    return produto
+    # Extrair regras de decisão
+    regras = extrair_regras_decisao(modelo, dados_encoded, feature_names, respostas)
+    
+    return {
+        'produto': produto,
+        'regras': regras
+    }
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -191,11 +298,12 @@ def predict():
             }), 400
         
         # Fazer predição
-        produto_recomendado = prever_produto(respostas_formatadas)
+        resultado = prever_produto(respostas_formatadas)
         
         return jsonify({
             'success': True,
-            'produto': produto_recomendado,
+            'produto': resultado['produto'],
+            'regras': resultado['regras'],
             'respostas': respostas_formatadas
         })
         
